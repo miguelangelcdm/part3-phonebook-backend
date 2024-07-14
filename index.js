@@ -82,7 +82,7 @@ app.get("/api/persons/:id", (req, res, next) => {
 app.delete("/api/persons/:id", (req, res,next) => {
   Person.findByIdAndDelete(req.params.id)
   .then(result=>{
-    response.status(204).send(req.params.name + " deleted").end()
+    res.status(204).send(req.params.name + " deleted").end()
   })
   .catch(error=>next(error))
 });
@@ -127,11 +127,11 @@ const unknownEndpoint=(req,res)=>{
 }
 app.use(unknownEndpoint)
 
-const errorHandler = (error, request, response, next) => {
+const errorHandler = (error, req, res, next) => {
   console.error(error.message)
 
   if (error.name === 'CastError') {
-    return response.status(400).send({ error: 'malformatted id' })
+    return res.status(400).send({ error: 'malformatted id' })
   } 
 
   next(error)
