@@ -8,7 +8,6 @@ const Person = require("./models/person");
 app.use(express.static("dist"));
 app.use(express.json());
 app.use(cors());
-// app.use(requestLogger)
 
 morgan.token("body", (req) => JSON.stringify(req.body));
 app.use(
@@ -53,21 +52,21 @@ app.get("/api/persons", (req, res) => {
   });
 });
 
-app.get("/info", (req, res) => {
-  const npersons = persons.length;
-  const reqTime = new Date().toString();
-  res.send(
-    "<p>Phonebook has info for " +
-      npersons +
-      " people</p><p>" +
-      reqTime +
-      "</p>"
-  );
+//get info about the phonebook
+app.get("/info", (req, res, next) => {
+  Person.countDocuments({})
+    .then(npersons => {
+      const reqTime = new Date().toString();
+      res.send(
+        `<p>Phonebook has info for ${npersons} people</p><p>${reqTime}</p>`
+      );
+    })
+    .catch(error => next(error));
 });
 
 //fetch one person
 app.get("/api/persons/:id", (req, res, next) => {
-  Person.findById(res.params.id)
+  Person.findById(req.params.id)
     .then((person) => {
       if (person) {
         res.json(person);
@@ -87,53 +86,66 @@ app.delete("/api/persons/:id", (req, res,next) => {
   .catch(error=>next(error))
 });
 
-//Add person
-app.post("/api/persons", (req, res) => {
+//Add person or update if exists
+app.post("/api/persons", (req, res, next) => {
   const body = req.body;
-  if (!body.name || !body.number) {
-    return res.status(400).json({ error: "name or number missing" });
+  if (body.name===undefined) {
+    return res.status(400).json({error:'name missing'})
   }
-  const person = new Person({
-    // id:randomId(),
-    name: body.name,
-    number: body.number,
-  });
-  person.save().then((savePerson) => {
-    res.json(savePerson);
-  });
-  // const sameName = persons.find((person) => person.name === body.name);
-  // if (sameName) {
-  //   return res
-  //     .status(409)
-  //     .send("Person named '" + body.name + "' already exists!");
-  // }
-  // if (!body.name || !body.number) {
-  //   return res.status(400).json({
-  //     error: "name or number missing",
-  //   });
-  // }
-  // const person = {
-  //   id: randomId(),
-  //   name: body.name,
-  //   number: body.number,
-  // };
-  // persons = persons.concat(person);
-  // res.json(person);
+  if (body.number===undefined) {
+    return res.status(400).json({error:'number missing'})
+  }
+
+  Person.findOne({ name: body.name })
+    .then(samePerson => {
+      if (samePerson) {
+        //Person exists, perform an update
+        samePerson.number = body.number;
+        return samePerson.save()
+          .then(updatedPerson => res.json(updatedPerson))
+          .catch(error => next(error));
+      } else {
+        //Person does not exist, create a new person
+        const person = new Person({
+          name: body.name,
+          number: body.number,
+        });
+        return person.save()
+          .then(savedPerson => res.json(savedPerson))
+          .catch(error => next(error));
+      }
+    })
+    .catch(error => next(error));
 });
 
+// PUT route to update person by ID
+app.put("/api/persons/:id", (req, res, next) => {
+  const {name,number} = req.body;
 
-const unknownEndpoint=(req,res)=>{
-  res.static(404).send({error:'unknown endpoint'})
-}
-app.use(unknownEndpoint)
+  // Person.findByIdAndUpdate(req.params.id, {name,number}, { new: true,runValidators:true,context:'query' })
+  //   .then(updatedPerson => {
+  //     if (updatedPerson) {
+  //       res.json(updatedPerson);
+  //     } else {
+  //       res.status(404).send('no se actualizo correctamente').end();
+  //     }
+  //   })
+  //   .catch(error => next(error));
+  Person.findByIdAndUpdate(req.params.id, {name,number}, { new: true,runValidators:true,context:'query' })
+    .then(updatedPerson => {
+      res.json(updatedPerson)
+    })
+    .catch(error => next(error));
+});
 
 const errorHandler = (error, req, res, next) => {
   console.error(error.message)
 
   if (error.name === 'CastError') {
     return res.status(400).send({ error: 'malformatted id' })
-  } 
-
+  } else if (error.name==='ValidationError') {
+    return res.status(400).json({error:error.message})
+  }
   next(error)
 }
 const PORT = process.env.PORT || 3001;
